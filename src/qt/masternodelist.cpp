@@ -1,19 +1,21 @@
 #include "masternodelist.h"
 #include "ui_masternodelist.h"
 
-#include "activemasternode.h"
+#include "sync.h"
 #include "clientmodel.h"
-#include "init.h"
-#include "guiutil.h"
+#include "walletmodel.h"
+#include "activemasternode.h"
 #include "masternode-sync.h"
 #include "masternodeconfig.h"
 #include "masternodeman.h"
-#include "sync.h"
 #include "wallet/wallet.h"
-#include "walletmodel.h"
+#include "init.h"
+#include "guiutil.h"
 
 #include <QTimer>
 #include <QMessageBox>
+
+CCriticalSection cs_masternodes;
 
 MasternodeList::MasternodeList(const PlatformStyle *platformStyle, QWidget *parent) :
     QWidget(parent),
@@ -58,8 +60,6 @@ MasternodeList::MasternodeList(const PlatformStyle *platformStyle, QWidget *pare
     connect(timer, SIGNAL(timeout()), this, SLOT(updateMyNodeList()));
     timer->start(1000);
 
-    fFilterUpdated = false;
-    nTimeFilterUpdated = GetTime();
     updateNodeList();
 }
 
@@ -71,7 +71,8 @@ MasternodeList::~MasternodeList()
 void MasternodeList::setClientModel(ClientModel *model)
 {
     this->clientModel = model;
-    if(model) {
+    if(model)
+    {
         // try to update list when masternode count changes
         connect(clientModel, SIGNAL(strMasternodesChanged(QString)), this, SLOT(updateNodeList()));
     }
@@ -90,146 +91,130 @@ void MasternodeList::showContextMenu(const QPoint &point)
 
 void MasternodeList::StartAlias(std::string strAlias)
 {
-    std::string strStatusHtml;
-    strStatusHtml += "<center>Alias: " + strAlias;
+    std::string statusObj;
+    statusObj += "<center>Alias: " + strAlias;
 
     BOOST_FOREACH(CMasternodeConfig::CMasternodeEntry mne, masternodeConfig.getEntries()) {
         if(mne.getAlias() == strAlias) {
-            std::string strError;
+            std::string errorMessage;
             CMasternodeBroadcast mnb;
 
-            bool fSuccess = CMasternodeBroadcast::Create(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), strError, mnb);
+            bool result = activeMasternode.CreateBroadcast(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), errorMessage, mnb);
 
-            if(fSuccess) {
-                strStatusHtml += "<br>Successfully started masternode.";
+            if(result) {
+                statusObj += "<br>Successfully started masternode." ;
                 mnodeman.UpdateMasternodeList(mnb);
                 mnb.Relay();
-                mnodeman.NotifyMasternodeUpdates();
             } else {
-                strStatusHtml += "<br>Failed to start masternode.<br>Error: " + strError;
+                statusObj += "<br>Failed to start masternode.<br>Error: " + errorMessage;
             }
             break;
         }
     }
-    strStatusHtml += "</center>";
+    statusObj += "</center>";
 
     QMessageBox msg;
-    msg.setText(QString::fromStdString(strStatusHtml));
-    msg.exec();
+    msg.setText(QString::fromStdString(statusObj));
 
-    updateMyNodeList(true);
+    msg.exec();
 }
 
 void MasternodeList::StartAll(std::string strCommand)
 {
-    int nCountSuccessful = 0;
-    int nCountFailed = 0;
-    std::string strFailedHtml;
+    int total = 0;
+    int successful = 0;
+    int fail = 0;
+    std::string statusObj;
 
     BOOST_FOREACH(CMasternodeConfig::CMasternodeEntry mne, masternodeConfig.getEntries()) {
-        std::string strError;
+        std::string errorMessage;
         CMasternodeBroadcast mnb;
 
-        int32_t nOutputIndex = 0;
-        if(!ParseInt32(mne.getOutputIndex(), &nOutputIndex)) {
-            continue;
-        }
+        CTxIn vin = CTxIn(uint256S(mne.getTxHash()), uint32_t(atoi(mne.getOutputIndex().c_str())));
+        CMasternode *pmn = mnodeman.Find(vin);
 
-        CTxIn txin = CTxIn(uint256S(mne.getTxHash()), nOutputIndex);
+        if(strCommand == "start-missing" && pmn) continue;
 
-        if(strCommand == "start-missing" && mnodeman.Has(txin)) continue;
+        bool result = activeMasternode.CreateBroadcast(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), errorMessage, mnb);
 
-        bool fSuccess = CMasternodeBroadcast::Create(mne.getIp(), mne.getPrivKey(), mne.getTxHash(), mne.getOutputIndex(), strError, mnb);
-
-        if(fSuccess) {
-            nCountSuccessful++;
+        if(result) {
+            successful++;
             mnodeman.UpdateMasternodeList(mnb);
             mnb.Relay();
-            mnodeman.NotifyMasternodeUpdates();
         } else {
-            nCountFailed++;
-            strFailedHtml += "\nFailed to start " + mne.getAlias() + ". Error: " + strError;
+            fail++;
+            statusObj += "\nFailed to start " + mne.getAlias() + ". Error: " + errorMessage;
         }
+        total++;
     }
     pwalletMain->Lock();
 
     std::string returnObj;
-    returnObj = strprintf("Successfully started %d masternodes, failed to start %d, total %d", nCountSuccessful, nCountFailed, nCountFailed + nCountSuccessful);
-    if (nCountFailed > 0) {
-        returnObj += strFailedHtml;
-    }
+    returnObj = strprintf("Successfully started %d masternodes, failed to start %d, total %d", successful, fail, total);
+    if (fail > 0)
+        returnObj += statusObj;
 
     QMessageBox msg;
     msg.setText(QString::fromStdString(returnObj));
     msg.exec();
-
-    updateMyNodeList(true);
 }
 
-void MasternodeList::updateMyMasternodeInfo(QString strAlias, QString strAddr, masternode_info_t& infoMn)
+void MasternodeList::updateMyMasternodeInfo(QString alias, QString addr, QString privkey, QString txHash, QString txIndex, CMasternode *pmn)
 {
-    bool fOldRowFound = false;
-    int nNewRow = 0;
+    LOCK(cs_mnlistupdate);
+    bool bFound = false;
+    int nodeRow = 0;
 
-    for(int i = 0; i < ui->tableWidgetMyMasternodes->rowCount(); i++) {
-        if(ui->tableWidgetMyMasternodes->item(i, 0)->text() == strAlias) {
-            fOldRowFound = true;
-            nNewRow = i;
+    for(int i=0; i < ui->tableWidgetMyMasternodes->rowCount(); i++)
+    {
+        if(ui->tableWidgetMyMasternodes->item(i, 0)->text() == alias)
+        {
+            bFound = true;
+            nodeRow = i;
             break;
         }
     }
 
-    if(nNewRow == 0 && !fOldRowFound) {
-        nNewRow = ui->tableWidgetMyMasternodes->rowCount();
-        ui->tableWidgetMyMasternodes->insertRow(nNewRow);
+    if(nodeRow == 0 && !bFound) {
+        nodeRow = ui->tableWidgetMyMasternodes->rowCount();
+        ui->tableWidgetMyMasternodes->insertRow(nodeRow);
     }
 
-    QTableWidgetItem *aliasItem = new QTableWidgetItem(strAlias);
-    QTableWidgetItem *addrItem = new QTableWidgetItem(infoMn.fInfoValid ? QString::fromStdString(infoMn.addr.ToString()) : strAddr);
-    QTableWidgetItem *protocolItem = new QTableWidgetItem(QString::number(infoMn.fInfoValid ? infoMn.nProtocolVersion : -1));
-    QTableWidgetItem *statusItem = new QTableWidgetItem(QString::fromStdString(infoMn.fInfoValid ? CMasternode::StateToString(infoMn.nActiveState) : "MISSING"));
-    QTableWidgetItem *activeSecondsItem = new QTableWidgetItem(QString::fromStdString(DurationToDHMS(infoMn.fInfoValid ? (infoMn.nTimeLastPing - infoMn.sigTime) : 0)));
-    QTableWidgetItem *lastSeenItem = new QTableWidgetItem(QString::fromStdString(DateTimeStrFormat("%Y-%m-%d %H:%M",
-                                                                                                   infoMn.fInfoValid ? infoMn.nTimeLastPing + QDateTime::currentDateTime().offsetFromUtc() : 0)));
-    QTableWidgetItem *pubkeyItem = new QTableWidgetItem(QString::fromStdString(infoMn.fInfoValid ? CBitcoinAddress(infoMn.pubKeyCollateralAddress.GetID()).ToString() : ""));
+    QTableWidgetItem *aliasItem = new QTableWidgetItem(alias);
+    QTableWidgetItem *addrItem = new QTableWidgetItem(addr);
+    QTableWidgetItem *protocolItem = new QTableWidgetItem(QString::number(pmn ? pmn->protocolVersion : -1));
+    QTableWidgetItem *statusItem = new QTableWidgetItem(QString::fromStdString(pmn ? pmn->Status() : "MISSING"));
+    QTableWidgetItem *activeSecondsItem = new QTableWidgetItem(QString::fromStdString(DurationToDHMS(pmn ? (pmn->lastPing.sigTime - pmn->sigTime) : 0)));
+    QTableWidgetItem *lastSeenItem = new QTableWidgetItem(GUIUtil::dateTimeStr(pmn ? pmn->lastPing.sigTime : 0));
+    QTableWidgetItem *pubkeyItem = new QTableWidgetItem(QString::fromStdString(pmn ? CBitcoinAddress(pmn->pubkey.GetID()).ToString() : ""));
 
-    ui->tableWidgetMyMasternodes->setItem(nNewRow, 0, aliasItem);
-    ui->tableWidgetMyMasternodes->setItem(nNewRow, 1, addrItem);
-    ui->tableWidgetMyMasternodes->setItem(nNewRow, 2, protocolItem);
-    ui->tableWidgetMyMasternodes->setItem(nNewRow, 3, statusItem);
-    ui->tableWidgetMyMasternodes->setItem(nNewRow, 4, activeSecondsItem);
-    ui->tableWidgetMyMasternodes->setItem(nNewRow, 5, lastSeenItem);
-    ui->tableWidgetMyMasternodes->setItem(nNewRow, 6, pubkeyItem);
+    ui->tableWidgetMyMasternodes->setItem(nodeRow, 0, aliasItem);
+    ui->tableWidgetMyMasternodes->setItem(nodeRow, 1, addrItem);
+    ui->tableWidgetMyMasternodes->setItem(nodeRow, 2, protocolItem);
+    ui->tableWidgetMyMasternodes->setItem(nodeRow, 3, statusItem);
+    ui->tableWidgetMyMasternodes->setItem(nodeRow, 4, activeSecondsItem);
+    ui->tableWidgetMyMasternodes->setItem(nodeRow, 5, lastSeenItem);
+    ui->tableWidgetMyMasternodes->setItem(nodeRow, 6, pubkeyItem);
 }
 
-void MasternodeList::updateMyNodeList(bool fForce)
-{
-    TRY_LOCK(cs_mymnlist, fLockAcquired);
-    if(!fLockAcquired) {
-        return;
-    }
-    static int64_t nTimeMyListUpdated = 0;
+void MasternodeList::updateMyNodeList(bool reset) {
+    static int64_t lastMyListUpdate = 0;
 
     // automatically update my masternode list only once in MY_MASTERNODELIST_UPDATE_SECONDS seconds,
     // this update still can be triggered manually at any time via button click
-    int64_t nSecondsTillUpdate = nTimeMyListUpdated + MY_MASTERNODELIST_UPDATE_SECONDS - GetTime();
-    ui->secondsLabel->setText(QString::number(nSecondsTillUpdate));
+    int64_t timeTillUpdate = lastMyListUpdate + MY_MASTERNODELIST_UPDATE_SECONDS - GetTime();
+    ui->secondsLabel->setText(QString::number(timeTillUpdate));
 
-    if(nSecondsTillUpdate > 0 && !fForce) return;
-    nTimeMyListUpdated = GetTime();
+    if(timeTillUpdate > 0 && !reset) return;
+    lastMyListUpdate = GetTime();
 
     ui->tableWidgetMasternodes->setSortingEnabled(false);
     BOOST_FOREACH(CMasternodeConfig::CMasternodeEntry mne, masternodeConfig.getEntries()) {
-        int32_t nOutputIndex = 0;
-        if(!ParseInt32(mne.getOutputIndex(), &nOutputIndex)) {
-            continue;
-        }
+        CTxIn vin = CTxIn(uint256S(mne.getTxHash()), uint32_t(atoi(mne.getOutputIndex().c_str())));
+        CMasternode *pmn = mnodeman.Find(vin);
 
-        CTxIn txin = CTxIn(uint256S(mne.getTxHash()), nOutputIndex);
-
-        masternode_info_t infoMn = mnodeman.GetMasternodeInfo(txin);
-
-        updateMyMasternodeInfo(QString::fromStdString(mne.getAlias()), QString::fromStdString(mne.getIp()), infoMn);
+        updateMyMasternodeInfo(QString::fromStdString(mne.getAlias()), QString::fromStdString(mne.getIp()), QString::fromStdString(mne.getPrivKey()), QString::fromStdString(mne.getTxHash()),
+            QString::fromStdString(mne.getOutputIndex()), pmn);
     }
     ui->tableWidgetMasternodes->setSortingEnabled(true);
 
@@ -239,24 +224,15 @@ void MasternodeList::updateMyNodeList(bool fForce)
 
 void MasternodeList::updateNodeList()
 {
-    TRY_LOCK(cs_mnlist, fLockAcquired);
-    if(!fLockAcquired) {
+    static int64_t lastListUpdate = 0;
+
+    // update only once in MASTERNODELIST_UPDATE_SECONDS seconds to prevent high cpu usage e.g. on filter change
+    if(GetTime() - lastListUpdate < MASTERNODELIST_UPDATE_SECONDS) return;
+    lastListUpdate = GetTime();
+
+    TRY_LOCK(cs_masternodes, lockMasternodes);
+    if(!lockMasternodes)
         return;
-    }
-
-    static int64_t nTimeListUpdated = GetTime();
-
-    // to prevent high cpu usage update only once in MASTERNODELIST_UPDATE_SECONDS seconds
-    // or MASTERNODELIST_FILTER_COOLDOWN_SECONDS seconds after filter was last changed
-    int64_t nSecondsToWait = fFilterUpdated
-                            ? nTimeFilterUpdated - GetTime() + MASTERNODELIST_FILTER_COOLDOWN_SECONDS
-                            : nTimeListUpdated - GetTime() + MASTERNODELIST_UPDATE_SECONDS;
-
-    if(fFilterUpdated) ui->countLabel->setText(QString::fromStdString(strprintf("Please wait... %d", nSecondsToWait)));
-    if(nSecondsToWait > 0) return;
-
-    nTimeListUpdated = GetTime();
-    fFilterUpdated = false;
 
     QString strToFilter;
     ui->countLabel->setText("Updating...");
@@ -270,11 +246,11 @@ void MasternodeList::updateNodeList()
         // populate list
         // Address, Protocol, Status, Active Seconds, Last Seen, Pub Key
         QTableWidgetItem *addressItem = new QTableWidgetItem(QString::fromStdString(mn.addr.ToString()));
-        QTableWidgetItem *protocolItem = new QTableWidgetItem(QString::number(mn.nProtocolVersion));
-        QTableWidgetItem *statusItem = new QTableWidgetItem(QString::fromStdString(mn.GetStatus()));
+        QTableWidgetItem *protocolItem = new QTableWidgetItem(QString::number(mn.protocolVersion));
+        QTableWidgetItem *statusItem = new QTableWidgetItem(QString::fromStdString(mn.Status()));
         QTableWidgetItem *activeSecondsItem = new QTableWidgetItem(QString::fromStdString(DurationToDHMS(mn.lastPing.sigTime - mn.sigTime)));
-        QTableWidgetItem *lastSeenItem = new QTableWidgetItem(QString::fromStdString(DateTimeStrFormat("%Y-%m-%d %H:%M", mn.lastPing.sigTime + QDateTime::currentDateTime().offsetFromUtc())));
-        QTableWidgetItem *pubkeyItem = new QTableWidgetItem(QString::fromStdString(CBitcoinAddress(mn.pubKeyCollateralAddress.GetID()).ToString()));
+        QTableWidgetItem *lastSeenItem = new QTableWidgetItem(GUIUtil::dateTimeStr(mn.lastPing.sigTime));
+        QTableWidgetItem *pubkeyItem = new QTableWidgetItem(QString::fromStdString(CBitcoinAddress(mn.pubkey.GetID()).ToString()));
 
         if (strCurrentFilter != "")
         {
@@ -298,31 +274,25 @@ void MasternodeList::updateNodeList()
 
     ui->countLabel->setText(QString::number(ui->tableWidgetMasternodes->rowCount()));
     ui->tableWidgetMasternodes->setSortingEnabled(true);
+
 }
 
-void MasternodeList::on_filterLineEdit_textChanged(const QString &strFilterIn)
-{
-    strCurrentFilter = strFilterIn;
-    nTimeFilterUpdated = GetTime();
-    fFilterUpdated = true;
-    ui->countLabel->setText(QString::fromStdString(strprintf("Please wait... %d", MASTERNODELIST_FILTER_COOLDOWN_SECONDS)));
+void MasternodeList::on_filterLineEdit_textChanged(const QString &filterString) {
+    strCurrentFilter = filterString;
+    ui->countLabel->setText("Please wait...");
 }
 
 void MasternodeList::on_startButton_clicked()
 {
-    std::string strAlias;
-    {
-        LOCK(cs_mymnlist);
-        // Find selected node alias
-        QItemSelectionModel* selectionModel = ui->tableWidgetMyMasternodes->selectionModel();
-        QModelIndexList selected = selectionModel->selectedRows();
+    // Find selected node alias
+    QItemSelectionModel* selectionModel = ui->tableWidgetMyMasternodes->selectionModel();
+    QModelIndexList selected = selectionModel->selectedRows();
+    if(selected.count() == 0)
+        return;
 
-        if(selected.count() == 0) return;
-
-        QModelIndex index = selected.at(0);
-        int nSelectedRow = index.row();
-        strAlias = ui->tableWidgetMyMasternodes->item(nSelectedRow, 0)->text().toStdString();
-    }
+    QModelIndex index = selected.at(0);
+    int r = index.row();
+    std::string strAlias = ui->tableWidgetMyMasternodes->item(r, 0)->text().toStdString();
 
     // Display message box
     QMessageBox::StandardButton retval = QMessageBox::question(this, tr("Confirm masternode start"),
@@ -330,15 +300,20 @@ void MasternodeList::on_startButton_clicked()
         QMessageBox::Yes | QMessageBox::Cancel,
         QMessageBox::Cancel);
 
-    if(retval != QMessageBox::Yes) return;
+    if(retval != QMessageBox::Yes)
+    {
+        return;
+    }
 
     WalletModel::EncryptionStatus encStatus = walletModel->getEncryptionStatus();
-
-    if(encStatus == walletModel->Locked || encStatus == walletModel->UnlockedForMixingOnly) {
-        WalletModel::UnlockContext ctx(walletModel->requestUnlock());
-
-        if(!ctx.isValid()) return; // Unlock wallet was cancelled
-
+    if(encStatus == walletModel->Locked || encStatus == walletModel->UnlockedForAnonymizationOnly)
+    {
+        WalletModel::UnlockContext ctx(walletModel->requestUnlock(true));
+        if(!ctx.isValid())
+        {
+            // Unlock wallet was cancelled
+            return;
+        }
         StartAlias(strAlias);
         return;
     }
@@ -354,15 +329,20 @@ void MasternodeList::on_startAllButton_clicked()
         QMessageBox::Yes | QMessageBox::Cancel,
         QMessageBox::Cancel);
 
-    if(retval != QMessageBox::Yes) return;
+    if(retval != QMessageBox::Yes)
+    {
+        return;
+    }
 
     WalletModel::EncryptionStatus encStatus = walletModel->getEncryptionStatus();
-
-    if(encStatus == walletModel->Locked || encStatus == walletModel->UnlockedForMixingOnly) {
-        WalletModel::UnlockContext ctx(walletModel->requestUnlock());
-
-        if(!ctx.isValid()) return; // Unlock wallet was cancelled
-
+    if(encStatus == walletModel->Locked || encStatus == walletModel->UnlockedForAnonymizationOnly)
+    {
+        WalletModel::UnlockContext ctx(walletModel->requestUnlock(true));
+        if(!ctx.isValid())
+        {
+            // Unlock wallet was cancelled
+            return;
+        }
         StartAll();
         return;
     }
@@ -373,7 +353,8 @@ void MasternodeList::on_startAllButton_clicked()
 void MasternodeList::on_startMissingButton_clicked()
 {
 
-    if(!masternodeSync.IsMasternodeListSynced()) {
+    if(masternodeSync.RequestedMasternodeAssets <= MASTERNODE_SYNC_LIST ||
+      masternodeSync.RequestedMasternodeAssets == MASTERNODE_SYNC_FAILED) {
         QMessageBox::critical(this, tr("Command is not available right now"),
             tr("You can't use this command until masternode list is synced"));
         return;
@@ -386,15 +367,20 @@ void MasternodeList::on_startMissingButton_clicked()
         QMessageBox::Yes | QMessageBox::Cancel,
         QMessageBox::Cancel);
 
-    if(retval != QMessageBox::Yes) return;
+    if(retval != QMessageBox::Yes)
+    {
+        return;
+    }
 
     WalletModel::EncryptionStatus encStatus = walletModel->getEncryptionStatus();
-
-    if(encStatus == walletModel->Locked || encStatus == walletModel->UnlockedForMixingOnly) {
-        WalletModel::UnlockContext ctx(walletModel->requestUnlock());
-
-        if(!ctx.isValid()) return; // Unlock wallet was cancelled
-
+    if(encStatus == walletModel->Locked || encStatus == walletModel->UnlockedForAnonymizationOnly)
+    {
+        WalletModel::UnlockContext ctx(walletModel->requestUnlock(true));
+        if(!ctx.isValid())
+        {
+            // Unlock wallet was cancelled
+            return;
+        }
         StartAll("start-missing");
         return;
     }
@@ -404,7 +390,8 @@ void MasternodeList::on_startMissingButton_clicked()
 
 void MasternodeList::on_tableWidgetMyMasternodes_itemSelectionChanged()
 {
-    if(ui->tableWidgetMyMasternodes->selectedItems().count() > 0) {
+    if(ui->tableWidgetMyMasternodes->selectedItems().count() > 0)
+    {
         ui->startButton->setEnabled(true);
     }
 }

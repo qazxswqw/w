@@ -21,13 +21,7 @@ class HelpMessageDialog : public QDialog
     Q_OBJECT
 
 public:
-    enum HelpMode {
-        about,
-        cmdline,
-        pshelp
-    };
-
-    explicit HelpMessageDialog(QWidget *parent, HelpMode helpMode);
+    explicit HelpMessageDialog(QWidget *parent, bool about);
     ~HelpMessageDialog();
 
     void printToConsole();

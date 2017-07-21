@@ -15,7 +15,7 @@ Check out the source code in the following directory hierarchy.
 	git clone https://github.com/devrandom/gitian-builder.git
 	git clone https://github.com/dashpay/dash.git
 
-###Dash Core maintainers/release engineers, update (commit) version in sources
+###Dash maintainers/release engineers, update (commit) version in sources
 
 	pushd ./dash
 	contrib/verifysfbinaries/verify.sh
@@ -188,7 +188,7 @@ Note: check that SHA256SUMS itself doesn't end up in SHA256SUMS, which is a spur
 
 - Announce the release:
 
-  - Release on Dash forum: https://www.dash.org/forum/topic/official-announcements.54/
+  - Release sticky on dashtalk: https://dashtalk.org/index.php?board=1.0 ***TODO***
 
   - Dash-development mailing list
 

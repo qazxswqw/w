@@ -78,8 +78,7 @@ public:
     const std::vector<SeedSpec6>& FixedSeeds() const { return vFixedSeeds; }
     const CCheckpointData& Checkpoints() const { return checkpointData; }
     int PoolMaxTransactions() const { return nPoolMaxTransactions; }
-    int FulfilledRequestExpireTime() const { return nFulfilledRequestExpireTime; }
-    std::string SporkPubKey() const { return strSporkPubKey; }
+    std::string SporkKey() const { return strSporkKey; }
     std::string MasternodePaymentPubKey() const { return strMasternodePaymentsPubKey; }
 protected:
     CChainParams() {}
@@ -103,8 +102,7 @@ protected:
     bool fTestnetToBeDeprecatedFieldRPC;
     CCheckpointData checkpointData;
     int nPoolMaxTransactions;
-    int nFulfilledRequestExpireTime;
-    std::string strSporkPubKey;
+    std::string strSporkKey;
     std::string strMasternodePaymentsPubKey;
 };
 

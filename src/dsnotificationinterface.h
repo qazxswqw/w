@@ -17,7 +17,6 @@ public:
 protected:
     // CValidationInterface
     void UpdatedBlockTip(const CBlockIndex *pindex);
-    void SyncTransaction(const CTransaction &tx, const CBlock *pblock);
 
 private:
 };

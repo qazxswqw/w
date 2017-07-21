@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2014-2017 The Dash Core developers
+// Copyright (c) 2014-2016 The Dash Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -21,10 +21,6 @@
 #ifdef ENABLE_WALLET
 #include "wallet/wallet.h"
 #include "wallet/walletdb.h"
-#endif
-
-#include "darksend.h"
-#ifdef ENABLE_WALLET
 #include "masternodeconfig.h"
 #endif
 
@@ -92,9 +88,6 @@ void OptionsModel::Init(bool resetSettings)
         settings.setValue("fShowAdvancedPSUI", false);
     fShowAdvancedPSUI = settings.value("fShowAdvancedPSUI", false).toBool();
 
-    if (!settings.contains("fLowKeysWarning"))
-        settings.setValue("fLowKeysWarning", true);
-
     // These are shared with the core or have a command-line parameter
     // and we want command-line parameters to overwrite the GUI settings.
     //
@@ -123,24 +116,24 @@ void OptionsModel::Init(bool resetSettings)
 
     // PrivateSend
     if (!settings.contains("nPrivateSendRounds"))
-        settings.setValue("nPrivateSendRounds", DEFAULT_PRIVATESEND_ROUNDS);
+        settings.setValue("nPrivateSendRounds", 2);
     if (!SoftSetArg("-privatesendrounds", settings.value("nPrivateSendRounds").toString().toStdString()))
         addOverriddenOption("-privatesendrounds");
     nPrivateSendRounds = settings.value("nPrivateSendRounds").toInt();
 
-    if (!settings.contains("nPrivateSendAmount")) {
+    if (!settings.contains("nAnonymizeDashAmount")) {
         // for migration from old settings
-        if (!settings.contains("nAnonymizeDashAmount"))
-            settings.setValue("nPrivateSendAmount", DEFAULT_PRIVATESEND_AMOUNT);
+        if (!settings.contains("nAnonymizeDarkcoinAmount"))
+            settings.setValue("nAnonymizeDashAmount", 1000);
         else
-            settings.setValue("nPrivateSendAmount", settings.value("nAnonymizeDashAmount").toInt());
+            settings.setValue("nAnonymizeDashAmount", settings.value("nAnonymizeDarkcoinAmount").toInt());
     }
-    if (!SoftSetArg("-privatesendamount", settings.value("nPrivateSendAmount").toString().toStdString()))
-        addOverriddenOption("-privatesendamount");
-    nPrivateSendAmount = settings.value("nPrivateSendAmount").toInt();
+    if (!SoftSetArg("-anonymizedashamount", settings.value("nAnonymizeDashAmount").toString().toStdString()))
+        addOverriddenOption("-anonymizedashamount");
+    nAnonymizeDashAmount = settings.value("nAnonymizeDashAmount").toInt();
 
     if (!settings.contains("fPrivateSendMultiSession"))
-        settings.setValue("fPrivateSendMultiSession", DEFAULT_PRIVATESEND_MULTISESSION);
+        settings.setValue("fPrivateSendMultiSession", fPrivateSendMultiSession);
     if (!SoftSetBoolArg("-privatesendmultisession", settings.value("fPrivateSendMultiSession").toBool()))
         addOverriddenOption("-privatesendmultisession");
     fPrivateSendMultiSession = settings.value("fPrivateSendMultiSession").toBool();
@@ -256,16 +249,14 @@ QVariant OptionsModel::data(const QModelIndex & index, int role) const
 #ifdef ENABLE_WALLET
         case SpendZeroConfChange:
             return settings.value("bSpendZeroConfChange");
-        case ShowMasternodesTab:
-            return settings.value("fShowMasternodesTab");
         case ShowAdvancedPSUI:
             return fShowAdvancedPSUI;
-        case LowKeysWarning:
-            return settings.value("fLowKeysWarning");
         case PrivateSendRounds:
             return settings.value("nPrivateSendRounds");
-        case PrivateSendAmount:
-            return settings.value("nPrivateSendAmount");
+        case AnonymizeDashAmount:
+            return settings.value("nAnonymizeDashAmount");
+        case ShowMasternodesTab:
+            return settings.value("fShowMasternodesTab");
         case PrivateSendMultiSession:
             return settings.value("fPrivateSendMultiSession");
 #endif
@@ -274,9 +265,9 @@ QVariant OptionsModel::data(const QModelIndex & index, int role) const
         case ThirdPartyTxUrls:
             return strThirdPartyTxUrls;
         case Digits:
-            return settings.value("digits");
+            return settings.value("digits");            
         case Theme:
-            return settings.value("theme");
+            return settings.value("theme");            
         case Language:
             return settings.value("language");
         case CoinControlFeatures:
@@ -390,19 +381,10 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
                 setRestartRequired(true);
             }
             break;
-        case ShowMasternodesTab:
-            if (settings.value("fShowMasternodesTab") != value) {
-                settings.setValue("fShowMasternodesTab", value);
-                setRestartRequired(true);
-            }
-            break;
         case ShowAdvancedPSUI:
             fShowAdvancedPSUI = value.toBool();
             settings.setValue("fShowAdvancedPSUI", fShowAdvancedPSUI);
             Q_EMIT advancedPSUIChanged(fShowAdvancedPSUI);
-            break;
-        case LowKeysWarning:
-            settings.setValue("fLowKeysWarning", value);
             break;
         case PrivateSendRounds:
             if (settings.value("nPrivateSendRounds") != value)
@@ -412,12 +394,18 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
                 Q_EMIT privateSendRoundsChanged();
             }
             break;
-        case PrivateSendAmount:
-            if (settings.value("nPrivateSendAmount") != value)
+        case AnonymizeDashAmount:
+            if (settings.value("nAnonymizeDashAmount") != value)
             {
-                nPrivateSendAmount = value.toInt();
-                settings.setValue("nPrivateSendAmount", nPrivateSendAmount);
-                Q_EMIT privateSentAmountChanged();
+                nAnonymizeDashAmount = value.toInt();
+                settings.setValue("nAnonymizeDashAmount", nAnonymizeDashAmount);
+                Q_EMIT anonymizeDashAmountChanged();
+            }
+            break;
+        case ShowMasternodesTab:
+            if (settings.value("fShowMasternodesTab") != value) {
+                settings.setValue("fShowMasternodesTab", value);
+                setRestartRequired(true);
             }
             break;
         case PrivateSendMultiSession:

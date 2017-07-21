@@ -32,19 +32,18 @@ Instructions: Homebrew
 
 #### Install dependencies using Homebrew
 
-    brew install autoconf automake berkeley-db4 libtool boost miniupnpc openssl pkg-config protobuf libevent
+    brew install autoconf automake berkeley-db4 libtool boost miniupnpc openssl pkg-config protobuf qt5 libevent
 
-NOTE: Building with Qt4 is still supported, however, could result in a broken UI. As such, building with Qt5 is recommended. Qt5 5.7 requires C++11 which Dash Core doesn't fully support yet, Qt5 5.6.2 has some other issues, so make sure to install Qt version < 5.6.2 (5.6.1-1 is recommended).
-    brew install https://raw.githubusercontent.com/Homebrew/homebrew-core/e6d954bab88e89c5582498157077756900865070/Formula/qt5.rb
+NOTE: Building with Qt4 is still supported, however, could result in a broken UI. As such, building with Qt5 is recommended.
 
-### Building Dash Core
+### Building `dash`
 
 1. Clone the GitHub tree to get the source code and go into the directory.
 
         git clone https://github.com/dashpay/dash.git
         cd dash
 
-2.  Build Dash Core:
+2.  Build dash-core:
     This will configure and build the headless dash binaries as well as the gui (if Qt is found).
     You can disable the gui build by passing `--without-gui` to configure.
 
@@ -82,7 +81,7 @@ You can ignore this section if you are building `dashd` for your own use.
 
 dashd/dash-cli binaries are not included in the Dash-Qt.app bundle.
 
-If you are building `dashd` or `Dash Core` for others, your build machine should be set up
+If you are building `dashd` or `Dsah Core` for others, your build machine should be set up
 as follows for maximum compatibility:
 
 All dependencies should be compiled with these flags:
@@ -103,14 +102,14 @@ directory. We have to first create the RPC configuration file, though.
 Run `./dashd` to get the filename where it should be put, or just try these
 commands:
 
-    echo -e "rpcuser=dashrpc\nrpcpassword=$(xxd -l 16 -p /dev/urandom)" > "/Users/${USER}/Library/Application Support/DashCore/dash.conf"
-    chmod 600 "/Users/${USER}/Library/Application Support/DashCore/dash.conf"
+    echo -e "rpcuser=dashrpc\nrpcpassword=$(xxd -l 16 -p /dev/urandom)" > "/Users/${USER}/Library/Application Support/Dash/dash.conf"
+    chmod 600 "/Users/${USER}/Library/Application Support/Dash/dash.conf"
 
 The next time you run it, it will start downloading the blockchain, but it won't
 output anything while it's doing this. This process may take several hours;
 you can monitor its process by looking at the debug.log file, like this:
 
-    tail -f $HOME/Library/Application\ Support/DashCore/debug.log
+    tail -f $HOME/Library/Application\ Support/Dash/debug.log
 
 Other commands:
 -------

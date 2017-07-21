@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2014-2017 The Dash Core developers
+// Copyright (c) 2014-2016 The Dash Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -104,7 +104,14 @@ using namespace std;
 
 //Dash only features
 bool fMasterNode = false;
+string strMasterNodePrivKey = "";
+string strMasterNodeAddr = "";
 bool fLiteMode = false;
+bool fEnableInstantSend = true;
+int nInstantSendDepth = 5;
+int nPrivateSendRounds = 2;
+int nAnonymizeDashAmount = 1000;
+int nLiquidityProvider = 0;
 /**
     nWalletBackups:
         1..10   - number of automatic backups to keep
@@ -113,6 +120,14 @@ bool fLiteMode = false;
         -2      - disabled because wallet was locked and we were not able to replenish keypool
 */
 int nWalletBackups = 10;
+/** Spork enforcement enabled time */
+int64_t enforceMasternodePaymentsTime = 4085657524;
+bool fSucessfullyLoaded = false;
+bool fEnablePrivateSend = false;
+bool fPrivateSendMultiSession = false;
+/** All denominations used by darksend */
+std::vector<CAmount> darkSendDenominations;
+string strBudgetMode = "";
 
 const char * const BITCOIN_CONF_FILENAME = "dash.conf";
 const char * const BITCOIN_PID_FILENAME = "dashd.pid";
@@ -274,10 +289,9 @@ bool LogAcceptCategory(const char* category)
                 ptrCategory->insert(string("privatesend"));
                 ptrCategory->insert(string("instantsend"));
                 ptrCategory->insert(string("masternode"));
-                ptrCategory->insert(string("spork"));
                 ptrCategory->insert(string("keepass"));
                 ptrCategory->insert(string("mnpayments"));
-                ptrCategory->insert(string("gobject"));
+                ptrCategory->insert(string("mngovernance"));
             }
         }
         const set<string>& setCategories = *ptrCategory.get();
@@ -514,13 +528,13 @@ void PrintExceptionContinue(const std::exception* pex, const char* pszThread)
 boost::filesystem::path GetDefaultDataDir()
 {
     namespace fs = boost::filesystem;
-    // Windows < Vista: C:\Documents and Settings\Username\Application Data\DashCore
-    // Windows >= Vista: C:\Users\Username\AppData\Roaming\DashCore
-    // Mac: ~/Library/Application Support/DashCore
-    // Unix: ~/.dashcore
+    // Windows < Vista: C:\Documents and Settings\Username\Application Data\Dash
+    // Windows >= Vista: C:\Users\Username\AppData\Roaming\Dash
+    // Mac: ~/Library/Application Support/Dash
+    // Unix: ~/.dash
 #ifdef WIN32
     // Windows
-    return GetSpecialFolderPath(CSIDL_APPDATA) / "DashCore";
+    return GetSpecialFolderPath(CSIDL_APPDATA) / "Dash";
 #else
     fs::path pathRet;
     char* pszHome = getenv("HOME");
@@ -530,10 +544,12 @@ boost::filesystem::path GetDefaultDataDir()
         pathRet = fs::path(pszHome);
 #ifdef MAC_OSX
     // Mac
-    return pathRet / "Library/Application Support/DashCore";
+    pathRet /= "Library/Application Support";
+    TryCreateDirectory(pathRet);
+    return pathRet / "Dash";
 #else
     // Unix
-    return pathRet / ".dashcore";
+    return pathRet / ".dash";
 #endif
 #endif
 }

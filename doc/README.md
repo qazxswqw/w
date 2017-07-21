@@ -9,10 +9,16 @@ The following are some helpful notes on how to run Dash on your native platform.
 
 ### Unix
 
+You need the Qt4 run-time libraries to run Dash-Qt. On Debian or Ubuntu:
+
+	sudo apt-get install libqtgui4
+
 Unpack the files into a directory and run:
 
-- `bin/bitcoin-qt` (GUI) or
-- `bin/bitcoind` (headless)
+- bin/32/dash-qt (GUI, 32-bit) or bin/32/dashd (headless, 32-bit)
+- bin/64/dash-qt (GUI, 64-bit) or bin/64/dashd (headless, 64-bit)
+
+
 
 ### Windows
 
@@ -20,7 +26,7 @@ Unpack the files into a directory, and then run dash-qt.exe.
 
 ### OS X
 
-Drag Dash-Qt to your applications folder, and then run Dash-Qt.
+Drag Dash-Core to your applications folder, and then run Dash-Core.
 
 ### Need Help?
 
@@ -31,7 +37,7 @@ for help and more information.
 
 Building
 ---------------------
-The following are developer notes on how to build Dash Core on your native platform. They are not complete guides, but include notes on the necessary libraries, compile flags, etc.
+The following are developer notes on how to build Dash on your native platform. They are not complete guides, but include notes on the necessary libraries, compile flags, etc.
 
 - [OS X Build Notes](build-osx.md)
 - [Unix Build Notes](build-unix.md)
@@ -41,7 +47,7 @@ The following are developer notes on how to build Dash Core on your native platf
 
 Development
 ---------------------
-The Dash Core repo's [root README](/README.md) contains relevant information on the development process and automated testing.
+The Dash repo's [root README](/README.md) contains relevant information on the development process and automated testing.
 
 - [Developer Notes](developer-notes.md)
 - [Multiwallet Qt Development](multiwallet-qt.md)

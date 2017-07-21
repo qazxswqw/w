@@ -294,8 +294,9 @@ public:
     }
 
     void resize(size_type new_size) {
-        if (size() > new_size) {
-            erase(item_ptr(new_size), end());
+        while (size() > new_size) {
+            item_ptr(size() - 1)->~T();
+            _size--;
         }
         if (new_size > capacity()) {
             change_capacity(new_size);
@@ -363,7 +364,10 @@ public:
     }
 
     iterator erase(iterator pos) {
-        return erase(pos, pos + 1);
+        (*pos).~T();
+        memmove(&(*pos), &(*pos) + 1, ((char*)&(*end())) - ((char*)(1 + &(*pos))));
+        _size--;
+        return pos;
     }
 
     iterator erase(iterator first, iterator last) {
@@ -388,7 +392,7 @@ public:
     }
 
     void pop_back() {
-        erase(end() - 1, end());
+        _size--;
     }
 
     T& front() {
@@ -408,7 +412,12 @@ public:
     }
 
     void swap(prevector<N, T, Size, Diff>& other) {
-        std::swap(_union, other._union);
+        if (_size & other._size & 1) {
+            std::swap(_union.capacity, other._union.capacity);
+            std::swap(_union.indirect, other._union.indirect);
+        } else {
+            std::swap(_union, other._union);
+        }
         std::swap(_size, other._size);
     }
 

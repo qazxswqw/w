@@ -128,19 +128,16 @@ private:
     //! keeps track of whether Unlock has run a thorough check before
     bool fDecryptionThoroughlyChecked;
 
-    //! if fOnlyMixingAllowed is true, only mixing should be allowed in unlocked wallet
-    bool fOnlyMixingAllowed;
-
 protected:
     bool SetCrypted();
 
     //! will encrypt previously unencrypted keys
     bool EncryptKeys(CKeyingMaterial& vMasterKeyIn);
 
-    bool Unlock(const CKeyingMaterial& vMasterKeyIn, bool fForMixingOnly = false);
+    bool Unlock(const CKeyingMaterial& vMasterKeyIn);
 
 public:
-    CCryptoKeyStore() : fUseCrypto(false), fDecryptionThoroughlyChecked(false), fOnlyMixingAllowed(false)
+    CCryptoKeyStore() : fUseCrypto(false), fDecryptionThoroughlyChecked(false)
     {
     }
 
@@ -149,15 +146,7 @@ public:
         return fUseCrypto;
     }
 
-    // This function should be used in a different combinations to determine
-    // if CCryptoKeyStore is fully locked so that no operations requiring access
-    // to private keys are possible:
-    //      IsLocked(true)
-    // or if CCryptoKeyStore's private keys are available for mixing only:
-    //      !IsLocked(true) && IsLocked()
-    // or if they are available for everything:
-    //      !IsLocked()
-    bool IsLocked(bool fForMixing = false) const
+    bool IsLocked() const
     {
         if (!IsCrypted())
             return false;
@@ -166,19 +155,10 @@ public:
             LOCK(cs_KeyStore);
             result = vMasterKey.empty();
         }
-        // fForMixing   fOnlyMixingAllowed  return
-        // ---------------------------------------
-        // true         true                result
-        // true         false               result
-        // false        true                true
-        // false        false               result
-
-        if(!fForMixing && fOnlyMixingAllowed) return true;
-
         return result;
     }
 
-    bool Lock(bool fAllowMixing = false);
+    bool Lock();
 
     virtual bool AddCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
     bool AddKeyPubKey(const CKey& key, const CPubKey &pubkey);

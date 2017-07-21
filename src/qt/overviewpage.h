@@ -69,7 +69,6 @@ private Q_SLOTS:
     void togglePrivateSend();
     void privateSendAuto();
     void privateSendReset();
-    void privateSendInfo();
     void updateDisplayUnit();
     void updatePrivateSendProgress();
     void updateAdvancedPSUI(bool fShowAdvancedPSUI);

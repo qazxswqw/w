@@ -102,7 +102,7 @@ class Socks5Connection(object):
                 addr = recvall(self.conn, 4)
             elif atyp == AddressType.DOMAINNAME:
                 n = recvall(self.conn, 1)[0]
-                addr = recvall(self.conn, n)
+                addr = str(recvall(self.conn, n))
             elif atyp == AddressType.IPV6:
                 addr = recvall(self.conn, 16)
             else:
@@ -117,7 +117,7 @@ class Socks5Connection(object):
             self.serv.queue.put(cmdin)
             print('Proxy: ', cmdin)
             # Fall through to disconnect
-        except Exception as e:
+        except Exception,e:
             traceback.print_exc(file=sys.stderr)
             self.serv.queue.put(e)
         finally:

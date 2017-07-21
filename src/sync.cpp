@@ -72,46 +72,41 @@ static void potential_deadlock_detected(const std::pair<void*, void*>& mismatch,
     bool firstLocked = false;
     bool secondLocked = false;
     bool onlyMaybeDeadlock = false;
-    std::string strOutput = "";
 
-    strOutput += "POTENTIAL DEADLOCK DETECTED\n";
-    strOutput += "Previous lock order was:\n";
+    LogPrintf("POTENTIAL DEADLOCK DETECTED\n");
+    LogPrintf("Previous lock order was:\n");
     BOOST_FOREACH (const PAIRTYPE(void*, CLockLocation) & i, s2) {
         if (i.first == mismatch.first) {
-            strOutput += " (1)";
+            LogPrintf(" (1)");
             if (!firstLocked && secondLocked && i.second.fTry)
                 onlyMaybeDeadlock = true;
             firstLocked = true;
         }
         if (i.first == mismatch.second) {
-            strOutput += " (2)";
+            LogPrintf(" (2)");
             if (!secondLocked && firstLocked && i.second.fTry)
                 onlyMaybeDeadlock = true;
             secondLocked = true;
         }
-        strOutput += strprintf(" %s\n", i.second.ToString().c_str());
+        LogPrintf(" %s\n", i.second.ToString());
     }
     firstLocked = false;
     secondLocked = false;
-    strOutput += "Current lock order is:\n";
+    LogPrintf("Current lock order is:\n");
     BOOST_FOREACH (const PAIRTYPE(void*, CLockLocation) & i, s1) {
         if (i.first == mismatch.first) {
-            strOutput += " (1)";
+            LogPrintf(" (1)");
             if (!firstLocked && secondLocked && i.second.fTry)
                 onlyMaybeDeadlock = true;
             firstLocked = true;
         }
         if (i.first == mismatch.second) {
-            strOutput += " (2)";
+            LogPrintf(" (2)");
             if (!secondLocked && firstLocked && i.second.fTry)
                 onlyMaybeDeadlock = true;
             secondLocked = true;
         }
-        strOutput += strprintf(" %s\n", i.second.ToString().c_str());
-    }
-    if(!onlyMaybeDeadlock) {
-        printf("%s\n", strOutput.c_str());
-        LogPrintf("%s\n", strOutput.c_str());
+        LogPrintf(" %s\n", i.second.ToString());
     }
     assert(onlyMaybeDeadlock);
 }
